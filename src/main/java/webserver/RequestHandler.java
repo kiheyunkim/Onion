@@ -3,6 +3,7 @@ package webserver;
 import enumerator.RequestUrlPart;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import util.HttpRequestUtils;
 
 import java.io.*;
 import java.net.Socket;
@@ -34,12 +35,9 @@ public class RequestHandler extends Thread {
                 requestLines.add(line);
             }
 
-            String requestUrl = requestLines.get(0);
-            String[] requestUrlSplits = requestUrl.split(" ");
-            String requestPath = requestUrlSplits[RequestUrlPart.URL_PART.getIndex()];
-
             DataOutputStream dos = new DataOutputStream(out);
-            byte[] body = Files.readAllBytes(new File("./webapp" + requestPath).toPath());
+            byte[] body = HttpRequestUtils.handleHttpRequest(requestLines);
+
             response200Header(dos, body.length);
             responseBody(dos, body);
         } catch (IOException e) {
