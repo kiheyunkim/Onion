@@ -9,17 +9,13 @@ import model.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class HttpRequestUtils {
@@ -68,7 +64,10 @@ public class HttpRequestUtils {
         return getKeyValue(header, ": ");
     }
 
-    public static byte[] handleHttpRequest(List<String> requestLines) throws IOException {
+    public static byte[] handleHttpRequest(BufferedReader bufferedReader) throws IOException {
+        List<String> requestLines = parsedRequest(bufferedReader);
+        List<Pair> headerPairList = headerPairList(requestLines);
+
         String request = requestLines.get(0);
         String[] requestSplits = request.split(" ");
 
@@ -88,18 +87,40 @@ public class HttpRequestUtils {
         return null;
     }
 
+    public static List<Pair> headerPairList(List<String> requestLines) {
+        List<Pair> parsedHeaderPairs = new ArrayList<>();
+        int requestLineCount = requestLines.size();
+        for (int i = 1; i < requestLineCount; ++i) {
+            parsedHeaderPairs.add(parseHeader(requestLines.get(i)));
+        }
+
+        return parsedHeaderPairs;
+    }
+
+    public static List<String> parsedRequest(BufferedReader bufferedReader) throws IOException {
+        List<String> requestLines = new ArrayList<>();
+        String line;
+        while ((line = bufferedReader.readLine()) != null && line.length() > 0) {
+            log.info(line);
+            requestLines.add(line);
+        }
+
+        return requestLines;
+    }
+
     public static byte[] disposeGetRequest(String request) {
         try {
             return Files.readAllBytes(new File("./webapp" + request).toPath());
-        } catch (IllegalArgumentException|IOException exception) {
+        } catch (IllegalArgumentException | IOException exception) {
             String[] urlParts = request.split("\\?");
-            if(urlParts.length == 2){
+            if (urlParts.length == 2) {
                 String queryString = urlParts[UrlPart.QUERY_STRING.getIndex()];
                 String encodedQueryString = decodingWithUrlEncoding(queryString);
                 Map<String, String> parsedQueryString = parseQueryString(encodedQueryString);
 
-                User newUser = new User(parsedQueryString.get("userId"),parsedQueryString.get("password"),parsedQueryString.get("name"),parsedQueryString.get("email"));
-            }else{
+                User newUser = new User(parsedQueryString.get("userId"), parsedQueryString.get("password"), parsedQueryString.get("name"), parsedQueryString.get("email"));
+                log.info(newUser.toString());
+            } else {
                 //ToDo: queryString이 없지만 접근하는 경우
             }
 
@@ -109,14 +130,21 @@ public class HttpRequestUtils {
     }
 
     public static byte[] disposePostRequest(String request) throws IOException {
+
+
         return Files.readAllBytes(new File("./webapp" + request).toPath());
     }
 
-    public static String decodingWithUrlEncoding(String originalQueryString){
+    public static String decodingWithUrlEncoding(String originalQueryString) {
         try {
             return URLDecoder.decode(originalQueryString, "UTF-8");
         } catch (UnsupportedEncodingException e) {
             return "";
         }
+    }
+
+    //ToDO: G
+    public static Optional<String> handleQueryString(List<String> headers){
+        String httpRequestStartLine = headers.get(0);
     }
 }
