@@ -1,15 +1,12 @@
 package webserver;
 
-import enumerator.RequestUrlPart;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import util.HttpRequestUtils;
 
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.List;
 
 public class RequestHandler extends Thread {
     private static final Logger log = LoggerFactory.getLogger(RequestHandler.class);
@@ -27,19 +24,9 @@ public class RequestHandler extends Thread {
         try (InputStream in = connection.getInputStream(); OutputStream out = connection.getOutputStream();
              BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));) {
 
-            List<String> requestLines = new ArrayList<>();
-            String line;
-            while ((line = bufferedReader.readLine()) != null && line.length() > 0) {
-                log.info(line);
-                requestLines.add(line);
-            }
-
-            String requestUrl = requestLines.get(0);
-            String[] requestUrlSplits = requestUrl.split(" ");
-            String requestPath = requestUrlSplits[RequestUrlPart.URL_PART.getIndex()];
-
             DataOutputStream dos = new DataOutputStream(out);
-            byte[] body = Files.readAllBytes(new File("./webapp" + requestPath).toPath());
+            byte[] body = HttpRequestUtils.handleHttpRequest(bufferedReader);
+
             response200Header(dos, body.length);
             responseBody(dos, body);
         } catch (IOException e) {
