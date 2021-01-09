@@ -5,6 +5,8 @@ import com.google.common.collect.Maps;
 import enumerator.HttpMethod;
 import enumerator.RequestUrlPart;
 import enumerator.UrlPart;
+import httpRequest.HttpRequest;
+import httpRequest.Url;
 import model.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,11 +16,14 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class HttpRequestUtils {
+    private static final String filePath = "./webapp/";
     private static final Logger log = LoggerFactory.getLogger(HttpRequestUtils.class);
 
     /**
@@ -64,40 +69,7 @@ public class HttpRequestUtils {
         return getKeyValue(header, ": ");
     }
 
-    public static byte[] handleHttpRequest(BufferedReader bufferedReader) throws IOException {
-        List<String> requestLines = parsedRequest(bufferedReader);
-        List<Pair> headerPairList = headerPairList(requestLines);
-
-        String request = requestLines.get(0);
-        String[] requestSplits = request.split(" ");
-
-        String requestMethod = requestSplits[RequestUrlPart.METHOD.getIndex()];
-        try {
-            HttpMethod httpMethod = HttpMethod.valueOf(requestMethod);
-            switch (httpMethod) {
-                case GET:
-                    return disposeGetRequest(requestSplits[RequestUrlPart.URL_PART.getIndex()]);
-                case POST:
-                    return disposePostRequest(requestSplits[RequestUrlPart.URL_PART.getIndex()]);
-            }
-        } catch (IllegalArgumentException illegalArgumentException) {
-            log.error("Invalid Http Method");
-        }
-
-        return null;
-    }
-
-    public static List<Pair> headerPairList(List<String> requestLines) {
-        List<Pair> parsedHeaderPairs = new ArrayList<>();
-        int requestLineCount = requestLines.size();
-        for (int i = 1; i < requestLineCount; ++i) {
-            parsedHeaderPairs.add(parseHeader(requestLines.get(i)));
-        }
-
-        return parsedHeaderPairs;
-    }
-
-    public static List<String> parsedRequest(BufferedReader bufferedReader) throws IOException {
+    public static List<String> parseHeader(BufferedReader bufferedReader) throws IOException {
         List<String> requestLines = new ArrayList<>();
         String line;
         while ((line = bufferedReader.readLine()) != null && line.length() > 0) {
@@ -108,31 +80,65 @@ public class HttpRequestUtils {
         return requestLines;
     }
 
-    public static byte[] disposeGetRequest(String request) {
+    public static HttpRequest parseHttpRequest(List<String> requestLines) {
+        return new HttpRequest(requestLines.get(0));
+    }
+
+    public static Map<String, String> parseHttpRequestHeader(List<String> requestLines) {
+        Map<String, String> parsedHeaders = new HashMap<>();
+        int requestLineCount = requestLines.size();
+        for (int i = 1; i < requestLineCount; ++i) {
+            Pair pair = parseHeader(requestLines.get(i));
+            parsedHeaders.put(pair.getKey(), pair.getValue());
+        }
+
+        return parsedHeaders;
+    }
+
+    public static Url parseUrlParts(String requestUrl){
+        return new Url(requestUrl);
+    }
+
+    public static byte[] handleHttpRequest(BufferedReader bufferedReader) throws IOException {
+        List<String> requestLines = parseHeader(bufferedReader);
+
+        HttpRequest httpRequest = parseHttpRequest(requestLines);
+        Map<String, String> parsedHeader = parseHttpRequestHeader(requestLines);
+
         try {
-            return Files.readAllBytes(new File("./webapp" + request).toPath());
-        } catch (IllegalArgumentException | IOException exception) {
-            String[] urlParts = request.split("\\?");
-            if (urlParts.length == 2) {
-                String queryString = urlParts[UrlPart.QUERY_STRING.getIndex()];
-                String encodedQueryString = decodingWithUrlEncoding(queryString);
-                Map<String, String> parsedQueryString = parseQueryString(encodedQueryString);
-
-                User newUser = new User(parsedQueryString.get("userId"), parsedQueryString.get("password"), parsedQueryString.get("name"), parsedQueryString.get("email"));
-                log.info(newUser.toString());
-            } else {
-                //ToDo: queryString이 없지만 접근하는 경우
+            switch (HttpMethod.valueOf(httpRequest.getMethod())) {
+                case GET:
+                    return disposeGetRequest(httpRequest.getUrl());
+                case POST:
+                    int postBodyLength = Integer.parseInt(parsedHeader.get("Content-Length"));
+                    return disposePostRequest(httpRequest.getUrl(), IOUtils.readData(bufferedReader, postBodyLength));
             }
+        } catch (IllegalArgumentException illegalArgumentException) {
+            log.error("Invalid Http Method");
+        }
 
-            return "1234".getBytes();
-            //ToDO: get RequestParam 처리
+        return null;
+    }
+
+    public static byte[] disposeGetRequest(String requestUrl) throws IOException {
+        Url url = parseUrlParts(requestUrl);
+
+        //ToDO: Query String은 여기서 처리
+
+        try{
+            return Files.readAllBytes(new File(filePath + url.getPath()).toPath());
+        }catch (AccessDeniedException accessDeniedException){
+            return "Not Found".getBytes(StandardCharsets.UTF_8);
         }
     }
 
-    public static byte[] disposePostRequest(String request) throws IOException {
+    public static byte[] disposePostRequest(String url, String postBody) throws IOException {
+        String decodedPostBody = decodingWithUrlEncoding(postBody);
+        Map<String, String> parsedQueryString = parseQueryString(decodedPostBody);
 
+        User newUser = new User(parsedQueryString.get("userId"), parsedQueryString.get("password"), parsedQueryString.get("name"), parsedQueryString.get("email"));
 
-        return Files.readAllBytes(new File("./webapp" + request).toPath());
+        return newUser.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     public static String decodingWithUrlEncoding(String originalQueryString) {
@@ -141,10 +147,5 @@ public class HttpRequestUtils {
         } catch (UnsupportedEncodingException e) {
             return "";
         }
-    }
-
-    //ToDO: G
-    public static Optional<String> handleQueryString(List<String> headers){
-        String httpRequestStartLine = headers.get(0);
     }
 }
