@@ -8,6 +8,8 @@ import enumerator.RequestUrlPart;
 import enumerator.UrlPart;
 import httpRequest.HttpRequest;
 import httpRequest.Url;
+import httpResponse.HttpResponse;
+import httpResponse.HttpResponseType;
 import model.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +19,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
@@ -96,11 +99,11 @@ public class HttpRequestUtils {
         return parsedHeaders;
     }
 
-    public static Url parseUrlParts(String requestUrl){
+    public static Url parseUrlParts(String requestUrl) {
         return new Url(requestUrl);
     }
 
-    public static byte[] handleHttpRequest(BufferedReader bufferedReader) throws IOException {
+    public static HttpResponse handleHttpRequest(BufferedReader bufferedReader) throws IOException {
         List<String> requestLines = parseHeader(bufferedReader);
 
         HttpRequest httpRequest = parseHttpRequest(requestLines);
@@ -116,24 +119,31 @@ public class HttpRequestUtils {
             }
         } catch (IllegalArgumentException illegalArgumentException) {
             log.error("Invalid Http Method");
+
         }
 
-        return null;
+        return new HttpResponse(HttpResponseType.NOT_FOUND);
     }
 
-    public static byte[] disposeGetRequest(String requestUrl) throws IOException {
+    public static HttpResponse disposeGetRequest(String requestUrl) throws IOException {
         Url url = parseUrlParts(requestUrl);
 
         //ToDO: Query String은 여기서 처리
 
-        try{
-            return Files.readAllBytes(new File(filePath + url.getPath()).toPath());
-        }catch (AccessDeniedException accessDeniedException){
-            return "Not Found".getBytes(StandardCharsets.UTF_8);
+        try {
+            byte[] fileBytes = Files.readAllBytes(new File(filePath + url.getPath()).toPath());
+            HttpResponse httpResponse = new HttpResponse(HttpResponseType.OK);
+            httpResponse.addHeaderLine("Content-Type: text/html;charset=utf-8");
+            httpResponse.addHeaderLine(String.format("Content-Length: %d", fileBytes.length));
+            httpResponse.addBody(fileBytes);
+
+            return httpResponse;
+        } catch (AccessDeniedException accessDeniedException) {
+            return new HttpResponse(HttpResponseType.NOT_FOUND);
         }
     }
 
-    public static byte[] disposePostRequest(String url, String postBody) throws IOException {
+    public static HttpResponse disposePostRequest(String url, String postBody) throws IOException {
         String decodedPostBody = decodingWithUrlEncoding(postBody);
         Map<String, String> parsedQueryString = parseQueryString(decodedPostBody);
 
@@ -142,7 +152,10 @@ public class HttpRequestUtils {
 
         DataBase.addUser(newUser);
 
-        return newUser.toString().getBytes(StandardCharsets.UTF_8);
+        HttpResponse httpResponse = new HttpResponse(HttpResponseType.REDIRECT);
+        httpResponse.addHeaderLine("Location: /index.html");
+
+        return httpResponse;
     }
 
     public static String decodingWithUrlEncoding(String originalQueryString) {
