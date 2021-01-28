@@ -2,6 +2,7 @@ package util;
 
 import com.google.common.base.Strings;
 import com.google.common.collect.Maps;
+import db.DataBase;
 import enumerator.HttpMethod;
 import enumerator.RequestUrlPart;
 import enumerator.UrlPart;
@@ -136,7 +137,10 @@ public class HttpRequestUtils {
         String decodedPostBody = decodingWithUrlEncoding(postBody);
         Map<String, String> parsedQueryString = parseQueryString(decodedPostBody);
 
+
         User newUser = new User(parsedQueryString.get("userId"), parsedQueryString.get("password"), parsedQueryString.get("name"), parsedQueryString.get("email"));
+
+        DataBase.addUser(newUser);
 
         return newUser.toString().getBytes(StandardCharsets.UTF_8);
     }
