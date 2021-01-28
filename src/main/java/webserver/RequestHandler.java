@@ -1,5 +1,6 @@
 package webserver;
 
+import httpResponse.HttpResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import util.HttpRequestUtils;
@@ -25,10 +26,10 @@ public class RequestHandler extends Thread {
              BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));) {
 
             DataOutputStream dos = new DataOutputStream(out);
-            byte[] body = HttpRequestUtils.handleHttpRequest(bufferedReader);
+            HttpResponse httpResponse = HttpRequestUtils.handleHttpRequest(bufferedReader);
 
-            response200Header(dos, body.length);
-            responseBody(dos, body);
+            dos.writeBytes(httpResponse.getHeader());
+            dos.write(httpResponse.getBody().orElse("".getBytes(StandardCharsets.UTF_8)));
         } catch (IOException e) {
             e.printStackTrace();
             log.error(e.getMessage());
@@ -40,6 +41,16 @@ public class RequestHandler extends Thread {
             dos.writeBytes("HTTP/1.1 200 OK \r\n");
             dos.writeBytes("Content-Type: text/html;charset=utf-8\r\n");
             dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
+            dos.writeBytes("\r\n");
+        } catch (IOException e) {
+            log.error(e.getMessage());
+        }
+    }
+
+    private void response301Header(DataOutputStream dos, String redirectLocation) {
+        try {
+            dos.writeBytes("HTTP/1.1 Moved Permanently\r\n");
+            dos.writeBytes(String.format("Location: /%s\r\n", redirectLocation));
             dos.writeBytes("\r\n");
         } catch (IOException e) {
             log.error(e.getMessage());
