@@ -106,6 +106,10 @@ public class HttpRequestUtils {
 
     public static HttpResponse handleHttpRequest(BufferedReader bufferedReader) throws IOException {
         List<String> requestLines = parseHeader(bufferedReader);
+        if (requestLines.size() == 0) {
+            log.error("this this this");
+            return new HttpResponse(HttpResponseType.NOT_FOUND);
+        }
 
         HttpRequest httpRequest = parseHttpRequest(requestLines);
         Map<String, String> parsedHeader = parseHttpRequestHeader(requestLines);
@@ -128,13 +132,48 @@ public class HttpRequestUtils {
 
     public static HttpResponse disposeGetRequest(String requestUrl, Map<String, String> parsedHeader) throws IOException {
         Url url = parseUrlParts(requestUrl);
+        Map<String, String> parsedCookie = parseCookies(parsedHeader.get("Cookie"));
 
-        //ToDO: Query String은 여기서 처리
+        if (url.getPath().equals("/user/list")) {
+            if (!Boolean.parseBoolean(parsedCookie.get("logined"))) {
+                HttpResponse httpResponse = new HttpResponse(HttpResponseType.REDIRECT);
+                httpResponse.addHeaderLine("Location: /index.html");
+
+                return httpResponse;
+            }
+
+            StringBuilder stringBuilder = new StringBuilder();
+            DataBase.findAll().forEach(row -> {
+                stringBuilder.append(row.toString());
+            });
+
+            String userData = stringBuilder.toString();
+
+            HttpResponse httpResponse = new HttpResponse(HttpResponseType.OK);
+            httpResponse.addHeaderLine("Content-Type: text/html;charset=utf-8");
+            httpResponse.addHeaderLine(String.format("Content-Length: %d", userData.getBytes(StandardCharsets.UTF_8).length));
+            httpResponse.addBody(userData.getBytes(StandardCharsets.UTF_8));
+
+            return httpResponse;
+        }
+
 
         try {
             byte[] fileBytes = Files.readAllBytes(new File(filePath + url.getPath()).toPath());
+            String[] fileExtensionSplits = url.getPath().split("\\.");
+            String fileExtension = fileExtensionSplits[fileExtensionSplits.length - 1];
+
             HttpResponse httpResponse = new HttpResponse(HttpResponseType.OK);
-            httpResponse.addHeaderLine("Content-Type: text/html;charset=utf-8");
+            if(fileExtension.equals("html")){
+                httpResponse.addHeaderLine("Content-Type: text/html;charset=utf-8");
+            }else if(fileExtension.equals("css")){
+                httpResponse.addHeaderLine("Content-Type: text/css;charset=utf-8");
+            }else if(fileExtension.equals("js")){
+                httpResponse.addHeaderLine("Content-Type: text/js;charset=utf-8");
+            }else{
+                httpResponse.addHeaderLine("Content-Type: application/json;charset=utf-8");
+            }
+
             httpResponse.addHeaderLine(String.format("Content-Length: %d", fileBytes.length));
             httpResponse.addBody(fileBytes);
 
@@ -145,7 +184,6 @@ public class HttpRequestUtils {
     }
 
     public static HttpResponse disposePostRequest(String url, String postBody, Map<String, String> parsedHeader) throws IOException {
-        log.error(url);
         String decodedPostBody = decodingWithUrlEncoding(postBody);
         Map<String, String> parsedQueryString = parseQueryString(decodedPostBody);
         Map<String, String> parsedCookie = parseCookies(parsedHeader.get("Cookie"));
