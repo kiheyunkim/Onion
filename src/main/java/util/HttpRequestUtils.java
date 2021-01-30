@@ -11,6 +11,7 @@ import httpRequest.Url;
 import httpResponse.HttpResponse;
 import httpResponse.HttpResponseType;
 import model.User;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -112,10 +113,10 @@ public class HttpRequestUtils {
         try {
             switch (HttpMethod.valueOf(httpRequest.getMethod())) {
                 case GET:
-                    return disposeGetRequest(httpRequest.getUrl());
+                    return disposeGetRequest(httpRequest.getUrl(), parsedHeader);
                 case POST:
                     int postBodyLength = Integer.parseInt(parsedHeader.get("Content-Length"));
-                    return disposePostRequest(httpRequest.getUrl(), IOUtils.readData(bufferedReader, postBodyLength));
+                    return disposePostRequest(httpRequest.getUrl(), IOUtils.readData(bufferedReader, postBodyLength), parsedHeader);
             }
         } catch (IllegalArgumentException illegalArgumentException) {
             log.error("Invalid Http Method");
@@ -125,7 +126,7 @@ public class HttpRequestUtils {
         return new HttpResponse(HttpResponseType.NOT_FOUND);
     }
 
-    public static HttpResponse disposeGetRequest(String requestUrl) throws IOException {
+    public static HttpResponse disposeGetRequest(String requestUrl, Map<String, String> parsedHeader) throws IOException {
         Url url = parseUrlParts(requestUrl);
 
         //ToDO: Query String은 여기서 처리
@@ -143,19 +144,43 @@ public class HttpRequestUtils {
         }
     }
 
-    public static HttpResponse disposePostRequest(String url, String postBody) throws IOException {
+    public static HttpResponse disposePostRequest(String url, String postBody, Map<String, String> parsedHeader) throws IOException {
+        log.error(url);
         String decodedPostBody = decodingWithUrlEncoding(postBody);
         Map<String, String> parsedQueryString = parseQueryString(decodedPostBody);
+        Map<String, String> parsedCookie = parseCookies(parsedHeader.get("Cookie"));
 
+        if (url.equals("/user/create")) {
+            User newUser = new User(parsedQueryString.get("userId"), parsedQueryString.get("password"), parsedQueryString.get("name"), parsedQueryString.get("email"));
 
-        User newUser = new User(parsedQueryString.get("userId"), parsedQueryString.get("password"), parsedQueryString.get("name"), parsedQueryString.get("email"));
+            DataBase.addUser(newUser);
 
-        DataBase.addUser(newUser);
+            HttpResponse httpResponse = new HttpResponse(HttpResponseType.REDIRECT);
+            httpResponse.addHeaderLine("Location: /index.html");
 
-        HttpResponse httpResponse = new HttpResponse(HttpResponseType.REDIRECT);
-        httpResponse.addHeaderLine("Location: /index.html");
+            return httpResponse;
+        } else if (url.equals("/user/login")) {
+            String loginId = parsedQueryString.get("userId");
+            String loginPassword = parsedQueryString.get("password");
 
-        return httpResponse;
+            User userById = DataBase.findUserById(loginId);
+
+            if (userById == null || !StringUtils.equals(loginPassword, userById.getPassword())) {
+                HttpResponse httpResponse = new HttpResponse(HttpResponseType.REDIRECT);
+                httpResponse.addHeaderLine("Location: /user/login_failed.html");
+                httpResponse.addHeaderLine("Set-Cookie: logined=false");
+
+                return httpResponse;
+            }
+
+            HttpResponse httpResponse = new HttpResponse(HttpResponseType.OK);
+            httpResponse.addHeaderLine("Content-Type: text/html");
+            httpResponse.addHeaderLine("Set-Cookie: logined=true");
+
+            return httpResponse;
+        }
+
+        return new HttpResponse(HttpResponseType.NOT_FOUND);
     }
 
     public static String decodingWithUrlEncoding(String originalQueryString) {
