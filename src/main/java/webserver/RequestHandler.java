@@ -28,41 +28,15 @@ public class RequestHandler extends Thread {
             DataOutputStream dos = new DataOutputStream(out);
             HttpResponse httpResponse = HttpRequestUtils.handleHttpRequest(bufferedReader);
 
-            dos.writeBytes(httpResponse.getHeader());
-            dos.write(httpResponse.getBody().orElse("".getBytes(StandardCharsets.UTF_8)));
+            sendResponse(dos, httpResponse);
         } catch (IOException e) {
             e.printStackTrace();
             log.error(e.getMessage());
         }
     }
 
-    private void response200Header(DataOutputStream dos, int lengthOfBodyContent) {
-        try {
-            dos.writeBytes("HTTP/1.1 200 OK \r\n");
-            dos.writeBytes("Content-Type: text/html;charset=utf-8\r\n");
-            dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
-            dos.writeBytes("\r\n");
-        } catch (IOException e) {
-            log.error(e.getMessage());
-        }
-    }
-
-    private void response301Header(DataOutputStream dos, String redirectLocation) {
-        try {
-            dos.writeBytes("HTTP/1.1 Moved Permanently\r\n");
-            dos.writeBytes(String.format("Location: /%s\r\n", redirectLocation));
-            dos.writeBytes("\r\n");
-        } catch (IOException e) {
-            log.error(e.getMessage());
-        }
-    }
-
-    private void responseBody(DataOutputStream dos, byte[] body) {
-        try {
-            dos.write(body, 0, body.length);
-            dos.flush();
-        } catch (IOException e) {
-            log.error(e.getMessage());
-        }
+    private void sendResponse(DataOutputStream dataOutputStream, HttpResponse httpResponse) throws IOException {
+        dataOutputStream.writeBytes(httpResponse.getHeader());
+        dataOutputStream.write(httpResponse.getBody().orElse("".getBytes(StandardCharsets.UTF_8)));
     }
 }

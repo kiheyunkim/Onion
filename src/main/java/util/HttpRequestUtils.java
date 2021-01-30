@@ -11,6 +11,7 @@ import httpRequest.Url;
 import httpResponse.HttpResponse;
 import httpResponse.HttpResponseType;
 import model.User;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -105,6 +106,10 @@ public class HttpRequestUtils {
 
     public static HttpResponse handleHttpRequest(BufferedReader bufferedReader) throws IOException {
         List<String> requestLines = parseHeader(bufferedReader);
+        if (requestLines.size() == 0) {
+            log.error("this this this");
+            return new HttpResponse(HttpResponseType.NOT_FOUND);
+        }
 
         HttpRequest httpRequest = parseHttpRequest(requestLines);
         Map<String, String> parsedHeader = parseHttpRequestHeader(requestLines);
@@ -112,10 +117,10 @@ public class HttpRequestUtils {
         try {
             switch (HttpMethod.valueOf(httpRequest.getMethod())) {
                 case GET:
-                    return disposeGetRequest(httpRequest.getUrl());
+                    return disposeGetRequest(httpRequest.getUrl(), parsedHeader);
                 case POST:
                     int postBodyLength = Integer.parseInt(parsedHeader.get("Content-Length"));
-                    return disposePostRequest(httpRequest.getUrl(), IOUtils.readData(bufferedReader, postBodyLength));
+                    return disposePostRequest(httpRequest.getUrl(), IOUtils.readData(bufferedReader, postBodyLength), parsedHeader);
             }
         } catch (IllegalArgumentException illegalArgumentException) {
             log.error("Invalid Http Method");
@@ -125,15 +130,50 @@ public class HttpRequestUtils {
         return new HttpResponse(HttpResponseType.NOT_FOUND);
     }
 
-    public static HttpResponse disposeGetRequest(String requestUrl) throws IOException {
+    public static HttpResponse disposeGetRequest(String requestUrl, Map<String, String> parsedHeader) throws IOException {
         Url url = parseUrlParts(requestUrl);
+        Map<String, String> parsedCookie = parseCookies(parsedHeader.get("Cookie"));
 
-        //ToDO: Query String은 여기서 처리
+        if (url.getPath().equals("/user/list")) {
+            if (!Boolean.parseBoolean(parsedCookie.get("logined"))) {
+                HttpResponse httpResponse = new HttpResponse(HttpResponseType.REDIRECT);
+                httpResponse.addHeaderLine("Location: /index.html");
+
+                return httpResponse;
+            }
+
+            StringBuilder stringBuilder = new StringBuilder();
+            DataBase.findAll().forEach(row -> {
+                stringBuilder.append(row.toString());
+            });
+
+            String userData = stringBuilder.toString();
+
+            HttpResponse httpResponse = new HttpResponse(HttpResponseType.OK);
+            httpResponse.addHeaderLine("Content-Type: text/html;charset=utf-8");
+            httpResponse.addHeaderLine(String.format("Content-Length: %d", userData.getBytes(StandardCharsets.UTF_8).length));
+            httpResponse.addBody(userData.getBytes(StandardCharsets.UTF_8));
+
+            return httpResponse;
+        }
+
 
         try {
             byte[] fileBytes = Files.readAllBytes(new File(filePath + url.getPath()).toPath());
+            String[] fileExtensionSplits = url.getPath().split("\\.");
+            String fileExtension = fileExtensionSplits[fileExtensionSplits.length - 1];
+
             HttpResponse httpResponse = new HttpResponse(HttpResponseType.OK);
-            httpResponse.addHeaderLine("Content-Type: text/html;charset=utf-8");
+            if(fileExtension.equals("html")){
+                httpResponse.addHeaderLine("Content-Type: text/html;charset=utf-8");
+            }else if(fileExtension.equals("css")){
+                httpResponse.addHeaderLine("Content-Type: text/css;charset=utf-8");
+            }else if(fileExtension.equals("js")){
+                httpResponse.addHeaderLine("Content-Type: text/js;charset=utf-8");
+            }else{
+                httpResponse.addHeaderLine("Content-Type: application/json;charset=utf-8");
+            }
+
             httpResponse.addHeaderLine(String.format("Content-Length: %d", fileBytes.length));
             httpResponse.addBody(fileBytes);
 
@@ -143,19 +183,42 @@ public class HttpRequestUtils {
         }
     }
 
-    public static HttpResponse disposePostRequest(String url, String postBody) throws IOException {
+    public static HttpResponse disposePostRequest(String url, String postBody, Map<String, String> parsedHeader) throws IOException {
         String decodedPostBody = decodingWithUrlEncoding(postBody);
         Map<String, String> parsedQueryString = parseQueryString(decodedPostBody);
+        Map<String, String> parsedCookie = parseCookies(parsedHeader.get("Cookie"));
 
+        if (url.equals("/user/create")) {
+            User newUser = new User(parsedQueryString.get("userId"), parsedQueryString.get("password"), parsedQueryString.get("name"), parsedQueryString.get("email"));
 
-        User newUser = new User(parsedQueryString.get("userId"), parsedQueryString.get("password"), parsedQueryString.get("name"), parsedQueryString.get("email"));
+            DataBase.addUser(newUser);
 
-        DataBase.addUser(newUser);
+            HttpResponse httpResponse = new HttpResponse(HttpResponseType.REDIRECT);
+            httpResponse.addHeaderLine("Location: /index.html");
 
-        HttpResponse httpResponse = new HttpResponse(HttpResponseType.REDIRECT);
-        httpResponse.addHeaderLine("Location: /index.html");
+            return httpResponse;
+        } else if (url.equals("/user/login")) {
+            String loginId = parsedQueryString.get("userId");
+            String loginPassword = parsedQueryString.get("password");
 
-        return httpResponse;
+            User userById = DataBase.findUserById(loginId);
+
+            if (userById == null || !StringUtils.equals(loginPassword, userById.getPassword())) {
+                HttpResponse httpResponse = new HttpResponse(HttpResponseType.REDIRECT);
+                httpResponse.addHeaderLine("Location: /user/login_failed.html");
+                httpResponse.addHeaderLine("Set-Cookie: logined=false");
+
+                return httpResponse;
+            }
+
+            HttpResponse httpResponse = new HttpResponse(HttpResponseType.OK);
+            httpResponse.addHeaderLine("Content-Type: text/html");
+            httpResponse.addHeaderLine("Set-Cookie: logined=true");
+
+            return httpResponse;
+        }
+
+        return new HttpResponse(HttpResponseType.NOT_FOUND);
     }
 
     public static String decodingWithUrlEncoding(String originalQueryString) {
